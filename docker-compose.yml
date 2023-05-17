@@ -1,0 +1,204 @@
+version: "3.8"
+services:
+  # Travel Project Includes Two Parts , First Admin Service and Second Users Service
+  # We Introduce Each Part In Readme File
+  # 1- We Have To Run Zookeeper
+  # 2- We Have To Run Kafka
+  # 3- We Have To Run Redis 
+  # 4- We Have To Run Admin Db
+  # 5- We Have To Run Users Db
+  # 6- We Have To Run Travel Admin Backend
+  # 7- We Have To Run Travel Users Backend
+  # 8- TODO We Have To Run Travel Admin Worker ---> will complete on future
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper
+    container_name: zookeeper
+    restart: always
+    env_file:
+      - .env
+    environment:
+      ZOOKEEPER_CLIENT_PORT: '${ZOOKEEPER_CLIENT_PORT}'
+      ZOOKEEPER_TICK_TIME: '${ZOOKEEPER_TICK_TIME}'
+    ports:
+      - "22181:2181"
+    networks:
+      - default
+
+  kafka:
+    image: confluentinc/cp-kafka
+    container_name: kafka
+    hostname: kafka
+    restart: always
+    env_file:
+      - .env
+    environment:
+      KAFKA_BROKER_ID: '${KAFKA_BROKER_ID}'
+      KAFKA_ZOOKEEPER_CONNECT: '${KAFKA_ZOOKEEPER_CONNECT}'
+      KAFKA_ADVERTISED_LISTENERS: '${KAFKA_ADVERTISED_LISTENERS}'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: '${KAFKA_LISTENER_SECURITY_PROTOCOL_MAP}'
+      KAFKA_LISTENERS: '${KAFKA_LISTENERS}'
+      KAFKA_INTER_BROKER_LISTENER_NAME: '${KAFKA_INTER_BROKER_LISTENER_NAME}'
+    volumes:
+      - ./container-data/celery/:/var/run/kafka/
+    depends_on:
+      - zookeeper
+    ports:
+      - "29092:29092"
+    expose:
+      - "29092"
+    networks:
+      - default
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: always
+    hostname: redis
+    ports:
+      - "6379:6379"
+    networks:
+      - default
+
+  admin-db:
+    image: postgres
+    container_name: admin-db
+    restart: always
+    hostname: admin-db
+    volumes:
+      - admin_postgres_data:/var/lib/postgresql/data/
+    expose:
+      - "5433"
+    command: -p 5433
+    ports:
+      - "5433:5433"
+    networks:
+      - default
+
+  users-db:
+    image: postgres
+    restart: always
+    hostname: users-db
+    volumes:
+      - users_postgres_data:/var/lib/postgresql/data/
+    expose:
+      - "5432"
+    command: -p 5432
+    ports:
+      - "5432:5432"
+    networks:
+      - default
+
+
+  travel-admin-backend:
+    build:
+      context: .
+      dockerfile: /travel_admin/Dockerfile
+    container_name: travel-admin-backend
+    command: sh run_worker.sh
+    restart: always
+    env_file:
+      - .env
+    environment:
+      DEBUG: '${ADMIN_DEBUG}'
+      SECRET_KEY: '${ADMIN_SECRET_KEY}'
+      DB_HOST: '${ADMIN_DB_HOST}'
+      DB_USER: '${ADMIN_DB_USER}'
+      DB_PASSWORD: '${ADMIN_DB_PASSWORD}'
+      DB_PORT: '${ADMIN_DB_PORT}'
+      DB_NAME: '${ADMIN_DB_NAME}'
+      CELERY_BROKER: '${CELERY_BROKER}'
+      CELERY_RESULT_BACKEND: '${CELERY_RESULT_BACKEND}'
+      REDIS_CACHE_SERVER: '${REDIS_CACHE_SERVER}'
+      KAFKA_SERVER: '${KAFKA_SERVER}'
+    volumes:
+      - ./travel_admin:/app
+      - ./container-data/celery/:/var/run/celery/
+    ports:
+      - "8001:8001"
+    depends_on:
+      - admin-db
+      - kafka
+      - redis
+    links:
+      - admin-db
+      - kafka
+      - redis
+    networks:
+      - default
+
+  travel-users-backend:
+    build:
+      context: .
+      dockerfile: /travel_users/Dockerfile
+    container_name: travel-users-backend
+    command: sh run_worker.sh
+    restart: always
+    env_file:
+      - .env
+    environment:
+      DEBUG: '${USERS_DEBUG}'
+      SECRET_KEY: '${USERS_SECRET_KEY}'
+      DB_HOST: '${USERS_DB_HOST}'
+      DB_USER: '${USERS_DB_USER}'
+      DB_PASSWORD: '${USERS_DB_PASSWORD}'
+      DB_PORT: '${USERS_DB_PORT}'
+      DB_NAME: '${USERS_DB_NAME}'
+      CELERY_BROKER: '${CELERY_BROKER}'
+      CELERY_RESULT_BACKEND: '${CELERY_RESULT_BACKEND}'
+      REDIS_CACHE_SERVER: '${REDIS_CACHE_SERVER}'
+      KAFKA_SERVER: '${KAFKA_SERVER}'
+    volumes:
+      - ./travel_users:/app
+      - ./container-data/celery/:/var/run/celery/
+    ports:
+      - "8002:8002"
+    depends_on:
+      - users-db
+      - kafka
+      - redis
+    links:
+      - users-db
+      - kafka
+      - redis
+    networks:
+      - default
+
+#  admin-worker:
+#    restart: always
+#    build:
+#      context: ./travel_admin
+#      dockerfile: /Dockerfile
+#    command: >
+#      sh -c "celery -A celery worker -l info"
+#    env_file:
+#      - .env
+#    environment:
+#      DEBUG: '${ADMIN_DEBUG}'
+#      SECRET_KEY: '${ADMIN_SECRET_KEY}'
+#      DB_HOST: '${ADMIN_DB_HOST}'
+#      DB_USER: '${ADMIN_DB_USER}'
+#      DB_PASSWORD: '${ADMIN_DB_PASSWORD}'
+#      DB_PORT: '${ADMIN_DB_PORT}'
+#      DB_NAME: '${ADMIN_DB_NAME}'
+#      CELERY_BROKER: '${CELERY_BROKER}'
+#      CELERY_RESULT_BACKEND: '${CELERY_RESULT_BACKEND}'
+#      REDIS_CACHE_SERVER: '${REDIS_CACHE_SERVER}'
+#      KAFKA_SERVER: '${KAFKA_SERVER}'
+#    volumes:
+#      - ./travel_admin:/app
+#      - ./container-data/celery/:/var/run/celery/
+#    depends_on:
+#      - travel-admin-backend
+#      - admin-db
+#      - redis
+#    networks:
+#      - default
+
+networks:
+  default:
+    driver: bridge
+
+volumes:
+  admin_postgres_data:
+  users_postgres_data:

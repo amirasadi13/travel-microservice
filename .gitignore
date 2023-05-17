@@ -1,0 +1,5 @@
+/venv
+/travel_admin/venv
+/travel_users/venv
+/travel_admin/docker-compose.yml
+/travel_users/docker-compose.yml
